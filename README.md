@@ -40,9 +40,9 @@ The homepage and workspace are separate views. The workspace shows the complete 
 
 ![Reviewed COVE trial sample with cited concepts and relationships](docs/screenshots/graph-dark.png)
 
-Distinct colors, softly shaded nodes, complete wrapped labels and collision separation make the graph easier to read. Choose circles or cards; drag nodes, switch layouts, search, filter, zoom, or use fullscreen. Optional damped physics briefly settles nearby nodes after a drag.
+New graphs open as compact networks: small nodes, labels beneath them, larger hubs and structural community colors. **Options** collapses the customization, editing and filter controls to keep more of the graph visible. Choose network dots, circles, cards, ovals or diamonds; color by community, entity type or individual colors; show connection labels always, on selection or never. Search, find paths, filter communities/types/confidence/inferred edges, zoom or use fullscreen. Optional damped physics briefly settles nearby nodes after a drag.
 
-Click a node or relationship to inspect its source. Change a concept’s name, category or color; edit a relationship; delete a node; undo or redo your edits. Original evidence remains attached and edits are marked. Exported HTML bundles the same editable viewer and makes **no network requests**.
+Click a node or relationship to inspect its source. Change a concept’s name, category or color; edit a relationship; delete a node; undo or redo your edits. Original evidence remains attached and edits are marked. Exported HTML fills the browser window, bundles the same editable explorer and makes **no network requests**. Existing graphs can switch to the new view through **Options → Customize → Network explorer**. See the [reference code comparison](docs/REFERENCE-GRAPH-COMPARISON.md) for the analysis behind these changes.
 
 <details>
 <summary><strong>See the light theme</strong></summary>

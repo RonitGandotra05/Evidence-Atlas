@@ -34,3 +34,11 @@ export async function menuClick(page: Page, selector: string) {
   await page.locator("#menu-toggle").click();
   await page.locator("#app-menu").locator(selector).click();
 }
+
+export async function openGraphOptions(
+  root: import("@playwright/test").Locator,
+) {
+  const button = root.locator('[data-action="options"]');
+  if ((await button.getAttribute("aria-expanded")) !== "true")
+    await button.click();
+}

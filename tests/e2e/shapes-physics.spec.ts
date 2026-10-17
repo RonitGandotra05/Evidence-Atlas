@@ -1,11 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { menuClick } from "./helpers";
+import { menuClick, openGraphOptions } from "./helpers";
 
 test("both node shapes reserve their labels and remain separate in every layout", async ({
   page,
 }) => {
   await page.goto("/#workspace");
   await menuClick(page, "#explore-demo");
+  await openGraphOptions(page.locator("#demo-graph"));
   const root = page.locator("#demo-graph"),
     canvas = root.locator(".graph-canvas");
   for (const shape of ["circle", "card"]) {
@@ -87,6 +88,7 @@ test("physics separates collisions, pins the dragged node, settles and can be pa
 }) => {
   await page.goto("/#workspace");
   await menuClick(page, "#explore-demo");
+  await openGraphOptions(page.locator("#demo-graph"));
   const root = page.locator("#demo-graph"),
     canvas = root.locator(".graph-canvas"),
     physics = root.locator('[data-action="physics"]');
@@ -193,6 +195,7 @@ test("a dense 60-node graph preserves all labels, separates both shapes and offe
     new GraphViewer(root, analysis);
   });
   const root = page.locator("#dense-graph");
+  await openGraphOptions(root);
   for (const shape of ["circle", "card"]) {
     await root.locator('select[aria-label="Node shape"]').selectOption(shape);
     for (const layout of [

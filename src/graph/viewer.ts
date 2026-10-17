@@ -17,6 +17,7 @@ import {
 } from "./edit";
 import { appearanceSettings, appearanceDefaults } from "./settings";
 import { quoteRange } from "./provenance";
+import { graphTopology, shortestPath, communityPalette } from "./topology";
 import { $, escapeHTML as esc, download } from "../ui/dom";
 const palette = [
   "#78dcbc",
@@ -47,7 +48,7 @@ function gradientStops(color: string, light: boolean) {
   );
 }
 // Keep the label inside its node so layouts reserve space for the actual text.
-function nodeLabel(label: string, settings: GraphSettings) {
+function nodeLabel(label: string, settings: GraphSettings, importance = 0) {
   const shape = settings.nodeShape;
   const circle = shape === "circle";
   const scale = settings.graphScale || 1;
@@ -92,6 +93,14 @@ function nodeLabel(label: string, settings: GraphSettings) {
     } else line = next;
   }
   if (line) lines.push(line);
+  if (shape === "dot") {
+    const diameter = (18 + 26 * Math.sqrt(importance)) * size * scale;
+    return {
+      displayLabel: lines.join("\n"),
+      nodeWidth: diameter,
+      labelHeight: diameter,
+    };
+  }
   const diameter = Math.max(
     112 * size * scale,
     Math.hypot(
@@ -136,6 +145,8 @@ export class GraphViewer {
   private cy: cytoscape.Core;
   private types: string[];
   private selected: string | null = null;
+  private topology: ReturnType<typeof graphTopology>;
+  private activePath: { nodes: string[]; edges: string[] } | null = null;
   private multiSelection = new Set<string>();
   private selectionMode = false;
   private panelPosition: { x: number; y: number } | null = null;
@@ -160,13 +171,14 @@ export class GraphViewer {
       physics: analysis.settings.physics !== false,
       hiddenTypes: [...analysis.settings.hiddenTypes],
     };
+    this.topology = graphTopology(analysis.graph);
     analysis.graph.nodes.forEach((n, i) => {
       if (!/^#[0-9a-f]{6}$/i.test(n.color || "")) n.color = nodeColor(i);
     });
     this.types = [...new Set(analysis.graph.nodes.map((n) => n.type))];
     root.classList.add("graph-viewer");
     root.dataset.theme = this.settings.theme;
-    root.innerHTML = `<div class="graph-tools"><label class="graph-search"><span aria-hidden="true">⌕</span><input aria-label="Search graph nodes" placeholder="Find a concept…"></label><select aria-label="Graph layout"><option value="cose">Force directed</option><option value="circle">Radial</option><option value="breadthfirst">Hierarchical</option><option value="concentric">Concentric</option><option value="grid">Grid</option></select><select aria-label="Node shape"><option value="circle">Circles</option><option value="card">Cards</option><option value="ellipse">Ovals</option><option value="diamond">Diamonds</option></select><button data-action="physics" aria-pressed="${this.settings.physics}" title="Automatically settle after dragging; stops when stable">Physics ${this.settings.physics ? "on" : "off"}</button><button data-action="fit" title="Show the entire graph">Overview</button><button data-action="readable" title="Show readable labels; drag to explore">Read labels</button><button data-action="zoom-in" aria-label="Zoom in">+</button><button data-action="zoom-out" aria-label="Zoom out">−</button><button data-action="reset">Arrange</button><button data-action="add-node">+ Concept</button><button data-action="select-mode" aria-pressed="false">Select multiple</button><button data-action="undo" disabled>Undo</button><button data-action="redo" disabled>Redo</button><button data-action="fullscreen" aria-label="Fullscreen graph">⛶</button><button data-action="theme" aria-label="Toggle graph theme">◐</button><details class="graph-export"><summary>Image ↓</summary><div><button data-action="png">PNG</button><button data-action="svg">SVG</button></div></details></div><details class="graph-customize"><summary>Customize <span>Size, spacing &amp; labels</span></summary><div class="customize-controls">${[
+    root.innerHTML = `<div class="graph-tools"><label class="graph-search"><span aria-hidden="true">⌕</span><input aria-label="Search graph nodes" placeholder="Find a concept…"></label><select aria-label="Graph layout"><option value="cose">Force directed</option><option value="circle">Radial</option><option value="breadthfirst">Hierarchical</option><option value="concentric">Concentric</option><option value="grid">Grid</option></select><select aria-label="Node shape"><option value="dot">Network dots</option><option value="circle">Circles</option><option value="card">Cards</option><option value="ellipse">Ovals</option><option value="diamond">Diamonds</option></select><button data-action="physics" aria-pressed="${this.settings.physics}" title="Automatically settle after dragging; stops when stable">Physics ${this.settings.physics ? "on" : "off"}</button><button data-action="fit" title="Show the entire graph">Overview</button><button data-action="readable" title="Show readable labels; drag to explore">Read labels</button><button data-action="zoom-in" aria-label="Zoom in">+</button><button data-action="zoom-out" aria-label="Zoom out">−</button><button data-action="reset">Arrange</button><button data-action="add-node">+ Concept</button><button data-action="select-mode" aria-pressed="false">Select multiple</button><button data-action="undo" disabled>Undo</button><button data-action="redo" disabled>Redo</button><button data-action="fullscreen" aria-label="Fullscreen graph">⛶</button><button data-action="theme" aria-label="Toggle graph theme">◐</button><details class="graph-export"><summary>Image ↓</summary><div><button data-action="png">PNG</button><button data-action="svg">SVG</button></div></details></div><details class="graph-customize"><summary>Customize <span>Size, spacing &amp; labels</span></summary><div class="customize-controls">${[
       [
         "graphScale",
         "Overall graph size",
@@ -207,7 +219,9 @@ export class GraphViewer {
       )
       .join(
         "",
-      )}<label class="labels-toggle"><input type="checkbox" data-setting="showEdgeLabels" ${this.settings.showEdgeLabels ? "checked" : ""}> Show connection labels</label><p class="customize-note">Nodes keep enough room for their text. Reduce text size for tighter nodes; use Read labels to inspect tiny graphs.</p><div class="customize-presets"><button data-action="compact">Compact</button><button data-action="comfortable">Comfortable</button><button data-action="appearance-reset">Reset appearance</button></div></div></details><div class="selection-bar" hidden><span role="status">0 concepts selected</span><button data-action="select-all">Select all visible</button><button data-action="clear-selection">Clear</button><button data-action="delete-selected" disabled>Delete selected</button></div><div class="graph-filter"><span>ENTITY TYPES</span>${this.types.map((t, i) => `<label class="type-toggle"><input type="checkbox" data-type="${esc(t)}" ${this.settings.hiddenTypes.includes(t) ? "" : "checked"}><i style="background:${palette[i % palette.length]}"></i>${esc(t)}</label>`).join("")}<label class="confidence">Confidence ≥ <output>${Math.round(this.settings.confidence * 100)}%</output><input aria-label="Minimum confidence" type="range" min="0" max="100" value="${this.settings.confidence * 100}"></label></div><div class="graph-body"><div class="graph-stage"><div class="graph-canvas" role="img" aria-label="Interactive research knowledge graph. Use the concept and relationship lists to inspect evidence with a keyboard."></div><div class="graph-hint">Drag to explore · Ctrl/⌘ + scroll to zoom · Select a concept or connection for evidence</div><div class="graph-count"></div><aside class="evidence-panel" popover="manual" tabindex="-1" aria-label="Evidence inspector"><div class="evidence-header" tabindex="0" aria-label="Move inspector with arrow keys or drag" title="Drag to move · Arrow keys to move"><div><span class="inspector-eyebrow">EVIDENCE INSPECTOR</span><small class="evidence-scroll-hint">Drag header to move · Scroll for details</small></div><button data-action="close-evidence" aria-label="Close evidence">×</button></div><div class="evidence-content"></div></aside></div></div><details class="accessible-graph"><summary>Browse concepts & relationships <span>Keyboard accessible</span></summary><div class="graph-list"></div></details>`;
+      )}<label class="labels-toggle"><input type="checkbox" data-setting="showEdgeLabels" ${this.settings.showEdgeLabels ? "checked" : ""}> Show connection labels</label><p class="customize-note">Network dots place labels beneath the nodes; other shapes keep text inside. Use Read labels to inspect tiny graphs.</p><div class="customize-presets"><button data-action="network">Network explorer</button><button data-action="compact">Compact</button><button data-action="comfortable">Comfortable</button><button data-action="appearance-reset">Reset appearance</button></div></div></details><div class="selection-bar" hidden><span role="status">0 concepts selected</span><button data-action="select-all">Select all visible</button><button data-action="clear-selection">Clear</button><button data-action="delete-selected" disabled>Delete selected</button></div><div class="graph-filter"><span>ENTITY TYPES</span>${this.types.map((t, i) => `<label class="type-toggle"><input type="checkbox" data-type="${esc(t)}" ${this.settings.hiddenTypes.includes(t) ? "" : "checked"}><i style="background:${palette[i % palette.length]}"></i>${esc(t)}</label>`).join("")}<label class="confidence">Confidence ≥ <output>${Math.round(this.settings.confidence * 100)}%</output><input aria-label="Minimum confidence" type="range" min="0" max="100" value="${this.settings.confidence * 100}"></label></div><div class="graph-body"><div class="graph-stage"><div class="graph-canvas" role="img" aria-label="Interactive research knowledge graph. Use the concept and relationship lists to inspect evidence with a keyboard."></div><div class="graph-hint">Drag to explore · Ctrl/⌘ + scroll to zoom · Select a concept or connection for evidence</div><div class="graph-count"></div><aside class="evidence-panel" popover="manual" tabindex="-1" aria-label="Evidence inspector"><div class="evidence-header" tabindex="0" aria-label="Move inspector with arrow keys or drag" title="Drag to move · Arrow keys to move"><div><span class="inspector-eyebrow">EVIDENCE INSPECTOR</span><small class="evidence-scroll-hint">Drag header to move · Scroll for details</small></div><button data-action="close-evidence" aria-label="Close evidence">×</button></div><div class="evidence-content"></div></aside></div></div><details class="accessible-graph"><summary>Browse concepts & relationships <span>Keyboard accessible</span></summary><div class="graph-list"></div></details>`;
+    this.setupOptions();
+    this.syncTypeColors();
     root.style.setProperty(
       "--graph-height",
       `${Math.min(1200, Math.max(760, 760 + (analysis.graph.nodes.length - 20) * 12))}px`,
@@ -218,7 +232,7 @@ export class GraphViewer {
         ...analysis.graph.nodes.map((n, i) => ({
           data: {
             ...n,
-            ...nodeLabel(n.label, this.settings),
+            ...this.nodeData(n.label, n.id),
             color: n.color || nodeColor(analysis.graph.nodes.indexOf(n)),
           },
           position: this.settings.positions?.[n.id] || {
@@ -271,7 +285,7 @@ export class GraphViewer {
     this.cy.on("tap", (event) => {
       if (event.target === this.cy) {
         this.selected = null;
-        this.cy.elements().removeClass("muted focused");
+        this.cy.elements().removeClass("muted focused revealed path-member");
         this.emptyEvidence();
       }
     });
@@ -279,7 +293,10 @@ export class GraphViewer {
       "input",
       () => this.search(),
     );
-    const layout = $<HTMLSelectElement>("select", root);
+    const layout = $<HTMLSelectElement>(
+      'select[aria-label="Graph layout"]',
+      root,
+    );
     layout.value = this.settings.layout;
     layout.addEventListener("change", () => {
       this.settings.layout = layout.value;
@@ -291,7 +308,7 @@ export class GraphViewer {
     shape.addEventListener("change", () => {
       this.settings.nodeShape = shape.value as GraphSettings["nodeShape"];
       this.cy.nodes().forEach((node) => {
-        node.data(nodeLabel(node.data("label"), this.settings));
+        node.data(this.nodeData(node.data("label"), node.id()));
       });
       this.cy.style(this.style());
       this.runLayout();
@@ -331,9 +348,14 @@ export class GraphViewer {
         if (!key) return;
         const previous = this.settings.graphScale!;
         const previousGap = this.settings.edgeLength!;
-        if (key === "showEdgeLabels")
+        if (key === "showEdgeLabels") {
           this.settings.showEdgeLabels = input.checked;
-        else {
+          this.settings.edgeLabelMode = input.checked ? "all" : "none";
+          $<HTMLSelectElement>(
+            '[aria-label="Connection label mode"]',
+            root,
+          ).value = this.settings.edgeLabelMode;
+        } else {
           const value = Number(input.value);
           Object.assign(this.settings, {
             [key]: ["graphScale", "nodeSize"].includes(key)
@@ -471,6 +493,218 @@ export class GraphViewer {
     this.emptyEvidence();
     this.filter();
   }
+  private nodeData(label: string, id: string) {
+    const node = this.analysis.graph.nodes.find((n) => n.id === id)!;
+    const community = this.topology.membership.get(id);
+    const renderColor =
+      this.settings.colorBy === "community"
+        ? this.topology.communities.find((c) => c.id === community)?.color
+        : this.settings.colorBy === "type"
+          ? communityPalette[
+              this.types.indexOf(node.type) % communityPalette.length
+            ]
+          : node.color || nodeColor(this.analysis.graph.nodes.indexOf(node));
+    return {
+      ...nodeLabel(
+        label,
+        this.settings,
+        (this.topology.degree.get(id) || 0) / this.topology.maxDegree,
+      ),
+      renderColor: renderColor || nodeColor(0),
+      community,
+    };
+  }
+  private setupOptions() {
+    const toolbar = $(".graph-tools", this.root);
+    const options = document.createElement("div");
+    options.className = "graph-options";
+    options.id = `graph-options-${crypto.randomUUID()}`;
+    options.hidden = !this.settings.controlsExpanded;
+    const button = document.createElement("button");
+    button.dataset.action = "options";
+    button.textContent = "Options";
+    button.setAttribute(
+      "aria-expanded",
+      String(this.settings.controlsExpanded),
+    );
+    button.setAttribute("aria-controls", options.id);
+    $(".graph-search", this.root).after(button);
+    toolbar.after(options);
+    const tools = document.createElement("div");
+    tools.className = "graph-tools graph-secondary-tools";
+    options.append(tools);
+    toolbar
+      .querySelectorAll(
+        'select, [data-action="physics"], [data-action="reset"], [data-action="add-node"], [data-action="select-mode"], [data-action="undo"], [data-action="redo"]',
+      )
+      .forEach((el) => tools.append(el));
+    options.append(
+      $(".graph-customize", this.root),
+      $(".graph-filter", this.root),
+    );
+    tools.insertAdjacentHTML(
+      "afterend",
+      `<div class="explore-settings"><label>Color nodes by <select aria-label="Color nodes by"><option value="individual">Individual colors</option><option value="type">Entity type</option><option value="community">Community</option></select></label><label>Connection labels <select aria-label="Connection label mode"><option value="all">All</option><option value="selection">On selection</option><option value="none">None</option></select></label><label class="labels-toggle"><input type="checkbox" aria-label="Show inferred relationships" ${this.settings.showInferred ? "checked" : ""}> Show inferred relationships</label></div>`,
+    );
+    options.insertAdjacentHTML(
+      "beforeend",
+      `<details class="graph-communities"><summary>Communities <span>Groups of connected concepts</span></summary><p class="customize-note">Colors show structural groups, named after their most connected concepts. They are navigation aids, not scientific categories.</p><div class="community-list"></div></details><details class="graph-path"><summary>Find a path <span>Between two concepts</span></summary><div class="path-controls"><label>From <select aria-label="Path from"></select></label><label>To <select aria-label="Path to"></select></label><button data-action="find-path">Find path</button><button data-action="clear-path">Clear path</button></div><p class="customize-note">Fewest visible connections, ignoring arrow direction. Open each relationship to check its evidence.</p><div class="path-result" role="status"></div></details>`,
+    );
+    this.renderCommunities();
+    const color = $<HTMLSelectElement>(
+      '[aria-label="Color nodes by"]',
+      this.root,
+    );
+    color.value = this.settings.colorBy!;
+    color.addEventListener(
+      "change",
+      () => {
+        this.settings.colorBy = color.value as GraphSettings["colorBy"];
+        this.cy.nodes().forEach((n) => {
+          n.data(this.nodeData(n.data("label"), n.id()));
+        });
+        this.syncTypeColors();
+        this.changed();
+      },
+      { signal: this.events.signal },
+    );
+    const labels = $<HTMLSelectElement>(
+      '[aria-label="Connection label mode"]',
+      this.root,
+    );
+    labels.value = this.settings.edgeLabelMode!;
+    labels.addEventListener(
+      "change",
+      () => {
+        this.settings.edgeLabelMode =
+          labels.value as GraphSettings["edgeLabelMode"];
+        this.settings.showEdgeLabels = labels.value !== "none";
+        this.syncAppearanceControls();
+        this.cy.style(this.style());
+        this.search();
+        this.placeEdgeLabels();
+        this.changed();
+      },
+      { signal: this.events.signal },
+    );
+    const inferred = $<HTMLInputElement>(
+      '[aria-label="Show inferred relationships"]',
+      this.root,
+    );
+    inferred.addEventListener(
+      "change",
+      () => {
+        this.settings.showInferred = inferred.checked;
+        this.filter();
+        this.changed();
+      },
+      { signal: this.events.signal },
+    );
+    options.addEventListener(
+      "change",
+      (event) => {
+        const input = event.target as HTMLInputElement;
+        if (input.dataset.community) {
+          this.settings.hiddenCommunities = Array.from(
+            options.querySelectorAll<HTMLInputElement>(
+              "[data-community]:not(:checked)",
+            ),
+          ).map((el) => el.dataset.community!);
+          this.filter();
+          this.changed();
+        }
+        if (
+          ["Path from", "Path to"].includes(
+            input.getAttribute("aria-label") || "",
+          )
+        ) {
+          this.activePath = null;
+          $(".path-result", this.root).textContent = "";
+          this.search();
+          this.placeEdgeLabels();
+        }
+      },
+      { signal: this.events.signal },
+    );
+  }
+  private renderCommunities() {
+    $(".community-list", this.root).innerHTML =
+      this.topology.communities
+        .map(
+          (c) =>
+            `<label><input type="checkbox" data-community="${esc(c.id)}" ${this.settings.hiddenCommunities!.includes(c.id) ? "" : "checked"}><i style="background:${c.color}"></i><span>${esc(c.label)}</span><small>${c.members.length}</small></label>`,
+        )
+        .join("") || "<p>No communities in an empty graph.</p>";
+  }
+  private syncTypeColors() {
+    this.root
+      .querySelectorAll<HTMLElement>(".type-toggle i")
+      .forEach((swatch, i) => {
+        swatch.style.background =
+          this.settings.colorBy === "type"
+            ? communityPalette[i % communityPalette.length]
+            : "var(--g-muted)";
+      });
+  }
+  private syncPathOptions(ids: string[]) {
+    for (const label of ["Path from", "Path to"]) {
+      const select = $<HTMLSelectElement>(`[aria-label="${label}"]`, this.root);
+      const previous = select.value;
+      select.innerHTML =
+        '<option value="">Choose a concept…</option>' +
+        ids
+          .map(
+            (id) =>
+              `<option value="${esc(id)}">${esc(this.node(id)?.label)}</option>`,
+          )
+          .join("");
+      if (ids.includes(previous)) select.value = previous;
+    }
+  }
+  private findPath() {
+    const from = $<HTMLSelectElement>(
+      '[aria-label="Path from"]',
+      this.root,
+    ).value;
+    const to = $<HTMLSelectElement>('[aria-label="Path to"]', this.root).value;
+    this.activePath = shortestPath(
+      {
+        nodes: this.analysis.graph.nodes.filter(
+          (n) => !this.cy.getElementById(n.id).hasClass("hidden"),
+        ),
+        edges: this.analysis.graph.edges.filter(
+          (e) => !this.cy.getElementById(e.id).hasClass("hidden"),
+        ),
+      },
+      from,
+      to,
+    );
+    this.closeEvidence();
+    $(".path-result", this.root).innerHTML = this.activePath
+      ? `<p>${this.activePath.edges.length} connection${this.activePath.edges.length === 1 ? "" : "s"} · ${this.activePath.nodes.map((id) => esc(this.node(id)?.label)).join(" ↔ ")}</p>${this.activePath.edges
+          .map((id) => {
+            const edge = this.analysis.graph.edges.find((e) => e.id === id)!;
+            return `<button data-edge="${esc(id)}">${esc(this.node(edge.source)?.label)} → ${esc(edge.relationship.replace(/_/g, " "))} → ${esc(this.node(edge.target)?.label)}</button>`;
+          })
+          .join("")}`
+      : from && to
+        ? "No path exists with the current filters."
+        : "Choose two visible concepts.";
+    this.highlightPath();
+    this.placeEdgeLabels();
+  }
+  private highlightPath() {
+    this.cy.elements().removeClass("muted focused revealed path-member");
+    if (!this.activePath) return;
+    this.cy.elements().addClass("muted");
+    const route = this.cy.collection();
+    for (const id of [...this.activePath.nodes, ...this.activePath.edges])
+      route.merge(this.cy.getElementById(id));
+    route.removeClass("muted").addClass("path-member");
+    if (this.settings.edgeLabelMode === "selection")
+      route.edges().addClass("revealed");
+    this.cy.fit(route, 70);
+  }
   private gap() {
     return this.settings.edgeLength! * this.settings.graphScale!;
   }
@@ -503,7 +737,7 @@ export class GraphViewer {
       ) / Math.max(1, nodes.length);
     const oldExtent = extent();
     nodes.forEach((node) => {
-      node.data(nodeLabel(node.data("label"), this.settings));
+      node.data(this.nodeData(node.data("label"), node.id()));
     });
     this.cy.style(this.style());
     const ratio =
@@ -787,31 +1021,32 @@ export class GraphViewer {
         selector: "node",
         style: {
           label: "data(displayLabel)",
-          "background-color": "data(color)",
-          "border-color": "data(color)",
+          "background-color": "data(renderColor)",
+          "border-color": "data(renderColor)",
           "background-opacity": 1,
           "background-fill":
-            this.settings.nodeShape === "circle"
-              ? "radial-gradient"
-              : "linear-gradient",
+            this.settings.nodeShape === "dot"
+              ? "solid"
+              : this.settings.nodeShape === "circle"
+                ? "radial-gradient"
+                : "linear-gradient",
           "background-gradient-stop-colors": (node) =>
-            gradientStops(node.data("color"), light),
+            gradientStops(node.data("renderColor"), light),
           "background-gradient-stop-positions": ["0%", "55%", "100%"],
           "background-gradient-direction": "to-bottom-right",
           "outline-width": 3 * nodeDetail,
-          "outline-color": "data(color)",
+          "outline-color": "data(renderColor)",
           "outline-opacity": 0.06,
           "outline-offset": 3 * nodeDetail,
           "border-width": 1.5 * nodeDetail,
           "border-opacity": 0.75,
-          shape:
-            this.settings.nodeShape === "circle"
+          shape: ["dot", "circle"].includes(this.settings.nodeShape!)
+            ? "ellipse"
+            : this.settings.nodeShape === "ellipse"
               ? "ellipse"
-              : this.settings.nodeShape === "ellipse"
-                ? "ellipse"
-                : this.settings.nodeShape === "diamond"
-                  ? "diamond"
-                  : "round-rectangle",
+              : this.settings.nodeShape === "diamond"
+                ? "diamond"
+                : "round-rectangle",
           width: "data(nodeWidth)",
           height: "data(labelHeight)",
           color: light ? "#292b24" : "#f3f1ec",
@@ -819,7 +1054,17 @@ export class GraphViewer {
           "font-size": this.settings.nodeFontSize! * this.settings.graphScale!,
           "font-weight": 600,
           "line-height": 1.4,
-          "text-valign": "center",
+          "text-valign":
+            this.settings.nodeShape === "dot" ? "bottom" : "center",
+          "text-margin-y":
+            this.settings.nodeShape === "dot"
+              ? 7 * this.settings.graphScale!
+              : 0,
+          "text-outline-color": light ? "#faf9f3" : "#11120f",
+          "text-outline-width":
+            this.settings.nodeShape === "dot"
+              ? 2 * this.settings.graphScale!
+              : 0,
           "text-halign": "center",
           "text-wrap": "wrap",
           "text-max-width": "10000px",
@@ -830,7 +1075,7 @@ export class GraphViewer {
       {
         selector: "edge",
         style: {
-          label: this.settings.showEdgeLabels ? "data(display)" : "",
+          label: this.settings.edgeLabelMode === "all" ? "data(display)" : "",
           width: 1.5 * edgeDetail,
           "line-color": light ? "#91a18c" : "#647365",
           "target-arrow-color": light ? "#91a18c" : "#647365",
@@ -874,6 +1119,22 @@ export class GraphViewer {
       },
       { selector: "edge.focused", style: { width: 3 } },
       {
+        selector: "edge.revealed",
+        style: {
+          label: this.settings.edgeLabelMode === "none" ? "" : "data(display)",
+        },
+      },
+      {
+        selector: ".path-member",
+        style: {
+          "border-color": "#e4913a",
+          "border-width": 3,
+          "line-color": "#e4913a",
+          "target-arrow-color": "#e4913a",
+          opacity: 1,
+        },
+      },
+      {
         selector: "node.multi-selected",
         style: {
           "border-width": 5,
@@ -889,52 +1150,32 @@ export class GraphViewer {
       this.cy.nodes().forEach((n) => {
         n.toggleClass(
           "hidden",
-          this.settings.hiddenTypes.includes(n.data("type")),
+          this.settings.hiddenTypes.includes(n.data("type")) ||
+            this.settings.hiddenCommunities!.includes(n.data("community")),
         );
       });
       this.cy.edges().forEach((e) => {
         e.toggleClass(
           "hidden",
           e.data("confidence") < this.settings.confidence ||
+            (!this.settings.showInferred && e.data("kind") === "inferred") ||
             e.source().hasClass("hidden") ||
             e.target().hasClass("hidden"),
         );
       });
     });
     const shownNodes = this.analysis.graph.nodes.filter(
-      (n) => !this.settings.hiddenTypes.includes(n.type),
+      (n) => !this.cy.getElementById(n.id).hasClass("hidden"),
     );
-    const shownIds = new Set(shownNodes.map((n) => n.id));
     const shownEdges = this.analysis.graph.edges.filter(
-      (e) =>
-        e.confidence >= this.settings.confidence &&
-        shownIds.has(e.source) &&
-        shownIds.has(e.target),
+      (e) => !this.cy.getElementById(e.id).hasClass("hidden"),
     );
     $(".graph-count", this.root).textContent =
-      `${shownNodes.length} concepts · ${shownEdges.length} relationships`;
+      `${shownNodes.length} concepts · ${shownEdges.length} relationships · ${this.topology.communities.length} communities`;
     $(".graph-list", this.root).innerHTML =
-      `<div><h4>Concepts</h4>${this.analysis.graph.nodes
-        .filter((n) => !this.settings.hiddenTypes.includes(n.type))
-        .map((n) => `<button data-node="${esc(n.id)}">${esc(n.label)}</button>`)
-        .join("")}</div><div><h4>Relationships</h4>${
-        this.analysis.graph.edges
-          .filter(
-            (e) =>
-              e.confidence >= this.settings.confidence &&
-              !this.settings.hiddenTypes.includes(
-                this.node(e.source)?.type || "",
-              ) &&
-              !this.settings.hiddenTypes.includes(
-                this.node(e.target)?.type || "",
-              ),
-          )
-          .map(
-            (e) =>
-              `<button data-edge="${esc(e.id)}">${esc(this.node(e.source)?.label)} → ${esc(e.relationship.replace(/_/g, " "))} → ${esc(this.node(e.target)?.label)}</button>`,
-          )
-          .join("") || "<p>No relationships match these filters.</p>"
-      }</div>`;
+      `<div><h4>Concepts</h4>${shownNodes.map((n) => `<button data-node="${esc(n.id)}">${esc(n.label)}</button>`).join("")}</div><div><h4>Relationships</h4>${shownEdges.map((e) => `<button data-edge="${esc(e.id)}">${esc(this.node(e.source)?.label)} → ${esc(e.relationship.replace(/_/g, " "))} → ${esc(this.node(e.target)?.label)}</button>`).join("") || "<p>No relationships match these filters.</p>"}</div>`;
+    this.syncPathOptions(shownNodes.map((n) => n.id));
+    if (this.activePath) this.findPath();
     if (
       this.selected &&
       this.cy.getElementById(this.selected).hasClass("hidden")
@@ -954,8 +1195,16 @@ export class GraphViewer {
     )
       .value.trim()
       .toLowerCase();
-    this.cy.elements().removeClass("muted focused");
-    if (!term) return;
+    this.cy.elements().removeClass("muted focused revealed path-member");
+    if (!term) {
+      if (
+        this.selected &&
+        !this.cy.getElementById(this.selected).hasClass("hidden")
+      )
+        this.focus(this.selected);
+      else if (this.activePath) this.highlightPath();
+      return;
+    }
     const found = this.cy
       .nodes(":visible")
       .filter(
@@ -966,6 +1215,9 @@ export class GraphViewer {
     this.cy.elements().addClass("muted");
     found.closedNeighborhood().removeClass("muted");
     found.addClass("focused");
+    if (this.settings.edgeLabelMode === "selection")
+      found.connectedEdges().addClass("revealed");
+    this.placeEdgeLabels();
     if (found.length) this.cy.fit(found.closedNeighborhood(), 100);
   }
   private focus(id: string) {
@@ -973,12 +1225,19 @@ export class GraphViewer {
     this.root.classList.add("has-selection");
     this.selected = id;
     const el = this.cy.getElementById(id);
-    this.cy.elements().removeClass("focused").addClass("muted");
+    this.cy
+      .elements()
+      .removeClass("focused revealed path-member")
+      .addClass("muted");
     (el.group() === "edges"
       ? el.connectedNodes().add(el)
       : el.closedNeighborhood()
     ).removeClass("muted");
     el.addClass("focused");
+    if (this.settings.edgeLabelMode === "selection") {
+      (el.isNode() ? el.connectedEdges() : el).addClass("revealed");
+      this.placeEdgeLabels();
+    }
   }
   private node(id: string) {
     return this.analysis.graph.nodes.find((n) => n.id === id);
@@ -995,8 +1254,10 @@ export class GraphViewer {
     const panel = $(".evidence-panel", this.root);
     const hadFocus = panel.contains(document.activeElement);
     this.selected = null;
-    this.cy.elements().removeClass("muted focused");
+    this.cy.elements().removeClass("muted focused revealed path-member");
     this.emptyEvidence();
+    this.search();
+    this.placeEdgeLabels();
     if (hadFocus) {
       const canvas = $(".graph-canvas", this.root);
       canvas.tabIndex = 0;
@@ -1229,7 +1490,9 @@ export class GraphViewer {
             ? 9 / (this.settings.edgeFontSize! * this.settings.graphScale!)
             : 0,
         )
-      : 0.8;
+      : this.settings.nodeShape === "dot"
+        ? 0
+        : 0.8;
     if (this.cy.zoom() < readableZoom) {
       this.cy.zoom(Math.min(this.cy.maxZoom(), readableZoom));
       this.cy.center(elements);
@@ -1275,7 +1538,13 @@ export class GraphViewer {
       );
     for (const edge of edges) {
       edge.style({ "text-margin-x": 0, "text-margin-y": 0 });
-      if (!this.settings.showEdgeLabels) continue;
+      if (!edge.style("label")) {
+        edge.style({
+          "control-point-distances": 0,
+          "control-point-weights": 0.5,
+        });
+        continue;
+      }
       const a = edge.source().position(),
         b = edge.target().position();
       const distance = Math.hypot(b.x - a.x, b.y - a.y);
@@ -1578,6 +1847,11 @@ export class GraphViewer {
     Object.assign(this.positionCache, this.snapshot().positions);
     const positions = this.positionCache;
     this.types = [...new Set(this.analysis.graph.nodes.map((n) => n.type))];
+    this.topology = graphTopology(this.analysis.graph);
+    this.settings.hiddenCommunities = [];
+    this.activePath = null;
+    this.renderCommunities();
+    $(".path-result", this.root).textContent = "";
     this.settings.hiddenTypes = this.settings.hiddenTypes.filter((t) =>
       this.types.includes(t),
     );
@@ -1586,7 +1860,7 @@ export class GraphViewer {
       ...this.analysis.graph.nodes.map((n, i) => ({
         data: {
           ...n,
-          ...nodeLabel(n.label, this.settings),
+          ...this.nodeData(n.label, n.id),
           color: n.color || nodeColor(i),
         },
         position: positions?.[n.id] || {
@@ -1612,6 +1886,7 @@ export class GraphViewer {
       !this.undoStack.length;
     $<HTMLButtonElement>('[data-action="redo"]', this.root).disabled =
       !this.redoStack.length;
+    this.syncTypeColors();
     this.filter();
     this.separateNodes();
     this.placeEdgeLabels();
@@ -1691,6 +1966,24 @@ export class GraphViewer {
     $<HTMLInputElement>(".graph-editor input", this.root).focus();
   }
   private action(action: string) {
+    if (action === "options") {
+      this.settings.controlsExpanded = !this.settings.controlsExpanded;
+      $(".graph-options", this.root).hidden = !this.settings.controlsExpanded;
+      $('[data-action="options"]', this.root).setAttribute(
+        "aria-expanded",
+        String(this.settings.controlsExpanded),
+      );
+      this.cy.resize();
+      this.positionEvidence();
+      this.changed();
+    }
+    if (action === "find-path") this.findPath();
+    if (action === "clear-path") {
+      this.activePath = null;
+      $(".path-result", this.root).textContent = "";
+      this.search();
+      this.placeEdgeLabels();
+    }
     if (action === "close-evidence") this.closeEvidence();
     if (action === "physics") {
       this.settings.physics = !this.settings.physics;
@@ -1749,20 +2042,49 @@ export class GraphViewer {
     }
     if (action === "add-node") this.createEditor("node");
     if (action === "add-edge") this.createEditor("edge");
-    if (["compact", "comfortable", "appearance-reset"].includes(action)) {
+    if (
+      ["network", "compact", "comfortable", "appearance-reset"].includes(action)
+    ) {
       const previous = this.settings.graphScale!,
         previousGap = this.settings.edgeLength!;
       Object.assign(
         this.settings,
         appearanceDefaults,
-        action === "compact"
-          ? { graphScale: 0.8, nodeSize: 0.9, edgeLength: 36, edgeFontSize: 9 }
-          : action === "comfortable"
-            ? { nodeSize: 1.15, edgeLength: 110, edgeFontSize: 12 }
-            : {},
+        { edgeLabelMode: "all" },
+        action === "network"
+          ? {
+              nodeShape: "dot",
+              colorBy: "community",
+              edgeLabelMode: "selection",
+              nodeFontSize: 13,
+              edgeLength: 100,
+              layout: "cose",
+            }
+          : action === "compact"
+            ? {
+                graphScale: 0.8,
+                nodeSize: 0.9,
+                edgeLength: 36,
+                edgeFontSize: 9,
+              }
+            : action === "comfortable"
+              ? { nodeSize: 1.15, edgeLength: 110, edgeFontSize: 12 }
+              : {},
       );
       this.syncAppearanceControls();
       this.applyAppearance(previous, previousGap);
+      $<HTMLSelectElement>('[aria-label="Node shape"]', this.root).value =
+        this.settings.nodeShape!;
+      $<HTMLSelectElement>('[aria-label="Color nodes by"]', this.root).value =
+        this.settings.colorBy!;
+      $<HTMLSelectElement>(
+        '[aria-label="Connection label mode"]',
+        this.root,
+      ).value = this.settings.edgeLabelMode!;
+      $<HTMLSelectElement>('[aria-label="Graph layout"]', this.root).value =
+        this.settings.layout;
+      this.syncTypeColors();
+      if (action === "network") this.runLayout();
     }
     if (action === "edit-node") this.editor("node");
     if (action === "edit-edge") this.editor("edge");
@@ -1814,8 +2136,17 @@ export class GraphViewer {
         renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 },
       });
     if (action === "reset") {
+      $(".path-result", this.root).textContent = "";
       this.settings.hiddenTypes = [];
       this.settings.confidence = 0;
+      this.settings.hiddenCommunities = [];
+      this.settings.showInferred = true;
+      this.activePath = null;
+      this.renderCommunities();
+      $<HTMLInputElement>(
+        '[aria-label="Show inferred relationships"]',
+        this.root,
+      ).checked = true;
       this.root
         .querySelectorAll<HTMLInputElement>("[data-type]")
         .forEach((x) => (x.checked = true));
@@ -1901,9 +2232,7 @@ export class GraphViewer {
           midpoint = e.midpoint();
         const mid = midpoint;
         const font = this.settings.edgeFontSize! * this.settings.graphScale!;
-        const label = this.settings.showEdgeLabels
-          ? String(e.data("display"))
-          : "";
+        const label = String(e.style("label") || "");
         const context = document.createElement("canvas").getContext("2d")!;
         context.font = `${font}px system-ui`;
         const lines: string[] = [];
@@ -1948,7 +2277,7 @@ export class GraphViewer {
           height = n.height();
         const lines = String(n.data("displayLabel")).split("\n");
         const stops = gradientStops(
-          n.data("color"),
+          n.data("renderColor"),
           this.settings.theme === "light",
         );
         const gradient =
@@ -1958,15 +2287,25 @@ export class GraphViewer {
         const fill = `<defs><${gradient} id="node-fill-${i}">${stops.map((color, index) => `<stop offset="${[0, 55, 100][index]}%" stop-color="${color}"/>`).join("")}</${gradient}></defs>`;
         const font = this.settings.nodeFontSize! * this.settings.graphScale!;
         const border = parseFloat(n.style("border-width"));
-        const shape =
-          this.settings.nodeShape === "circle"
-            ? `<circle cx="${p.x}" cy="${p.y}" r="${width / 2}" fill="url(#node-fill-${i})" stroke="${n.data("color")}" stroke-width="${border}"/>`
-            : this.settings.nodeShape === "ellipse"
-              ? `<ellipse cx="${p.x}" cy="${p.y}" rx="${width / 2}" ry="${height / 2}" fill="url(#node-fill-${i})" stroke="${n.data("color")}" stroke-width="${border}"/>`
-              : this.settings.nodeShape === "diamond"
-                ? `<polygon points="${p.x},${p.y - height / 2} ${p.x + width / 2},${p.y} ${p.x},${p.y + height / 2} ${p.x - width / 2},${p.y}" fill="url(#node-fill-${i})" stroke="${n.data("color")}" stroke-width="${border}"/>`
-                : `<rect x="${p.x - width / 2}" y="${p.y - height / 2}" width="${width}" height="${height}" rx="${Math.min(12, width / 4, height / 4)}" fill="url(#node-fill-${i})" stroke="${n.data("color")}" stroke-width="${border}"/>`;
-        return `${fill}${shape}<text text-anchor="middle" font-family="system-ui" font-size="${font}" font-weight="600" fill="${fg}">${lines.map((line, i) => `<tspan x="${p.x}" y="${p.y - (lines.length - 1) * font * 0.7 + i * font * 1.4 + font / 3}">${esc(line)}</tspan>`).join("")}</text>`;
+        const shape = ["dot", "circle"].includes(this.settings.nodeShape!)
+          ? `<circle cx="${p.x}" cy="${p.y}" r="${width / 2}" fill="url(#node-fill-${i})" stroke="${n.data("renderColor")}" stroke-width="${border}"/>`
+          : this.settings.nodeShape === "ellipse"
+            ? `<ellipse cx="${p.x}" cy="${p.y}" rx="${width / 2}" ry="${height / 2}" fill="url(#node-fill-${i})" stroke="${n.data("renderColor")}" stroke-width="${border}"/>`
+            : this.settings.nodeShape === "diamond"
+              ? `<polygon points="${p.x},${p.y - height / 2} ${p.x + width / 2},${p.y} ${p.x},${p.y + height / 2} ${p.x - width / 2},${p.y}" fill="url(#node-fill-${i})" stroke="${n.data("renderColor")}" stroke-width="${border}"/>`
+              : `<rect x="${p.x - width / 2}" y="${p.y - height / 2}" width="${width}" height="${height}" rx="${Math.min(12, width / 4, height / 4)}" fill="url(#node-fill-${i})" stroke="${n.data("renderColor")}" stroke-width="${border}"/>`;
+        const labelY =
+          p.y +
+          (this.settings.nodeShape === "dot"
+            ? height / 2 +
+              7 * this.settings.graphScale! +
+              lines.length * font * 0.7
+            : 0);
+        const renderedShape =
+          this.settings.nodeShape === "dot"
+            ? shape.replaceAll(`url(#node-fill-${i})`, n.data("renderColor"))
+            : shape;
+        return `${fill}${renderedShape}<text text-anchor="middle" font-family="system-ui" font-size="${font}" font-weight="600" fill="${fg}">${lines.map((line, i) => `<tspan x="${p.x}" y="${labelY - (lines.length - 1) * font * 0.7 + i * font * 1.4 + font / 3}">${esc(line)}</tspan>`).join("")}</text>`;
       })
       .join("")}</svg>`;
   }

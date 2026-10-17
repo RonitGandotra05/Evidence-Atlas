@@ -1,3 +1,4 @@
+import { openGraphOptions } from "./helpers";
 import { test, expect } from "@playwright/test";
 import { menuClick } from "./helpers";
 
@@ -8,6 +9,7 @@ test("sample labels fit inside separate cards in every layout and theme", async 
   await page.setViewportSize({ width: 1440, height: 1200 });
   await page.goto("/#workspace");
   await menuClick(page, "#explore-demo");
+  await openGraphOptions(page.locator("#demo-graph"));
   const root = page.locator("#demo-graph");
   const canvas = root.locator(".graph-canvas");
   await root.locator('select[aria-label="Node shape"]').selectOption("card");

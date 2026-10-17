@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { menuClick } from "./helpers";
+import { menuClick, openGraphOptions } from "./helpers";
 
 async function labelMetrics(canvas: import("@playwright/test").Locator) {
   return canvas.evaluate((el) => {
@@ -78,6 +78,7 @@ test("labels stay visible on their real curves at minimum sizing in every layout
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/#workspace");
   await menuClick(page, "#explore-demo");
+  await openGraphOptions(page.locator("#demo-graph"));
   const root = page.locator("#demo-graph"),
     canvas = root.locator(".graph-canvas");
   await root.locator(".graph-customize summary").click();

@@ -20,7 +20,7 @@ test("connected NEJM sample opens without AI calls and cites highlighted paper e
   await page.goto("/#sample");
   const root = page.locator("#demo-graph");
   await expect(root.locator(".graph-count")).toHaveText(
-    "18 concepts · 19 relationships",
+    "18 concepts · 19 relationships · 6 communities",
   );
   await expect(root.getByLabel("Graph layout")).toHaveValue("concentric");
   await expect(root.locator('[data-action="physics"]')).toHaveAttribute(

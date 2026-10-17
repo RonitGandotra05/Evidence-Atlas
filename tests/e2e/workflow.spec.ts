@@ -1,3 +1,4 @@
+import { openGraphOptions } from "./helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { readFile, mkdir } from "node:fs/promises";
 import { goFocus, goBuild, openHistory, menuClick } from "./helpers";
@@ -140,6 +141,7 @@ test("complete workflow, evidence, exports, history, keys, layouts, and themes",
   );
   await page.locator("#graph-root [data-node]").first().click();
   await expect(page.locator("#graph-root .relationship-card")).toHaveCount(1);
+  await openGraphOptions(page.locator("#graph-root"));
   for (const layout of ["circle", "breadthfirst", "concentric", "grid", "cose"])
     await page
       .locator('#graph-root select[aria-label="Graph layout"]')
@@ -421,6 +423,7 @@ test("graph canvas zoom, drag, confidence, and fullscreen", async ({
   await expect
     .poll(async () => Math.abs((await state()).position.x - current.position.x))
     .toBeGreaterThan(10);
+  await openGraphOptions(page.locator("#demo-graph"));
   const slider = page.locator('#demo-graph [aria-label="Minimum confidence"]');
   await slider.fill("95");
   await expect(page.locator("#demo-graph .graph-count")).toContainText(

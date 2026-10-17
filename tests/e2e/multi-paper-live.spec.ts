@@ -103,7 +103,7 @@ test("ten PDFs stream source-grounded nodes/edges, count actual usage, and prese
   await goBuild(page);
   await expect(page.locator("#run-estimate")).toContainText("20");
   await expect(page.locator("#run-estimate")).toContainText(
-    "Evidence Atlas charges $0",
+    "Evidence Atlas: $0",
   );
   await page.locator("#api-key").fill("MULTI-TEST-SECRET");
   await page.locator("#analyze").click();

@@ -26,8 +26,31 @@ export function appearanceSettings(settings: Partial<GraphSettings>) {
     nodeFontSize: bounded(settings.nodeFontSize, 15, 4, 24),
     edgeFontSize: bounded(settings.edgeFontSize, 11, 4, 18),
     edgeLength: bounded(settings.edgeLength, 70, 0, 240),
-    showEdgeLabels: settings.showEdgeLabels !== false,
-    nodeShape: (["circle", "card", "ellipse", "diamond"].includes(
+    showEdgeLabels: ["all", "selection", "none"].includes(
+      settings.edgeLabelMode || "",
+    )
+      ? settings.edgeLabelMode !== "none"
+      : settings.showEdgeLabels !== false,
+    edgeLabelMode: (["all", "selection", "none"].includes(
+      settings.edgeLabelMode || "",
+    )
+      ? settings.edgeLabelMode
+      : settings.showEdgeLabels === false
+        ? "none"
+        : "all") as NonNullable<GraphSettings["edgeLabelMode"]>,
+    colorBy: (["individual", "type", "community"].includes(
+      settings.colorBy || "",
+    )
+      ? settings.colorBy
+      : "individual") as NonNullable<GraphSettings["colorBy"]>,
+    showInferred: settings.showInferred !== false,
+    controlsExpanded: settings.controlsExpanded === true,
+    hiddenCommunities: Array.isArray(settings.hiddenCommunities)
+      ? settings.hiddenCommunities
+          .filter((id): id is string => typeof id === "string")
+          .slice(0, 1500)
+      : [],
+    nodeShape: (["dot", "circle", "card", "ellipse", "diamond"].includes(
       settings.nodeShape || "",
     )
       ? settings.nodeShape

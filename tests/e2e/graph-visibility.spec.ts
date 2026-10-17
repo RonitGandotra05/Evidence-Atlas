@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { demoAnalysis } from "../../src/ui/demo";
 import { emptyUsage } from "../../src/providers/usage";
-import { openHistory } from "./helpers";
+import { openHistory, openGraphOptions } from "./helpers";
 
 for (const viewport of [
   { width: 1465, height: 746 },
@@ -47,6 +47,8 @@ for (const viewport of [
       })
       .toBeGreaterThan(viewport.width < 760 ? 200 : 380);
     expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+    await expect(root.locator(".graph-options")).toBeHidden();
+    await openGraphOptions(root);
     const filters = root.locator(".graph-filter");
     expect((await filters.boundingBox())!.height).toBeLessThanOrEqual(
       viewport.width < 760 ? 84 : 96,
@@ -56,6 +58,7 @@ for (const viewport of [
     ).toBe(true);
     await filters.locator("input[data-type]").last().uncheck();
     await expect(root.locator(".graph-count")).toContainText("46 concepts");
+    await root.locator('[data-action="options"]').click();
     await expect(root.locator(".graph-export > div")).toBeHidden();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),

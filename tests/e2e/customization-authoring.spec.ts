@@ -1,10 +1,11 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { menuClick } from "./helpers";
+import { menuClick, openGraphOptions } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#workspace");
   await menuClick(page, "#explore-demo");
+  await openGraphOptions(page.locator("#demo-graph"));
 });
 
 async function metrics(root: Locator) {
@@ -74,6 +75,7 @@ test("coordinated scaling, presets and every shape keep text inside nodes", asyn
   page,
 }) => {
   const root = page.locator("#demo-graph");
+  await openGraphOptions(root);
   await root.locator(".graph-customize summary").click();
   await root.getByLabel("Overall graph size", { exact: true }).fill("100");
   await root.getByLabel("Node size", { exact: true }).fill("100");
@@ -389,6 +391,7 @@ test("customized personal graphs reopen offline, export again and recover from b
   await expect(offline.locator(".graph-count")).toContainText(
     "19 concepts · 20 relationships",
   );
+  await openGraphOptions(offline.locator("#viewer"));
   await offline.locator(".graph-customize summary").click();
   await expect(
     offline.getByLabel("Overall graph size", { exact: true }),
@@ -454,6 +457,7 @@ test("customized personal graphs reopen offline, export again and recover from b
   await expect(root.locator(".graph-count")).toContainText(
     "19 concepts · 20 relationships",
   );
+  await openGraphOptions(root);
   await root.locator(".graph-customize summary").click();
   await expect(
     root.getByLabel("Overall graph size", { exact: true }),

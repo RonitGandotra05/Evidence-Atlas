@@ -106,7 +106,12 @@ export interface KnowledgeGraph {
 export interface GraphSettings {
   theme: "dark" | "light";
   layout: string;
-  nodeShape?: "circle" | "card" | "ellipse" | "diamond";
+  nodeShape?: "dot" | "circle" | "card" | "ellipse" | "diamond";
+  colorBy?: "individual" | "type" | "community";
+  edgeLabelMode?: "all" | "selection" | "none";
+  showInferred?: boolean;
+  controlsExpanded?: boolean;
+  hiddenCommunities?: string[];
   graphScale?: number;
   nodeSize?: number;
   nodeFontSize?: number;

@@ -566,7 +566,11 @@ export class Workspace {
                 ? "light"
                 : "dark",
             layout: "cose",
-            nodeShape: "circle",
+            nodeShape: "dot",
+            colorBy: "community",
+            edgeLabelMode: "selection",
+            edgeLength: 100,
+            nodeFontSize: 13,
             physics: true,
             confidence: 0,
             hiddenTypes: [],

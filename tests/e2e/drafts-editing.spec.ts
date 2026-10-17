@@ -1,3 +1,4 @@
+import { openGraphOptions } from "./helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -201,6 +202,7 @@ test("graph editing keeps proof, supports undo, saves drafts, and exports editab
   await expect(page.locator("#graph-root .graph-count")).toContainText(
     "2 concepts · 0 relationships",
   );
+  await openGraphOptions(page.locator("#graph-root"));
   await page.locator('#graph-root [data-action="undo"]').click();
   await expect(page.locator("#graph-root .graph-count")).toContainText(
     "3 concepts · 1 relationships",
@@ -221,7 +223,7 @@ test("graph editing keeps proof, supports undo, saves drafts, and exports editab
   await offline.goto("file://" + output);
   await expect(offline.locator("body")).toHaveAttribute("data-theme", "light");
   await expect(offline.locator('select[aria-label="Node shape"]')).toHaveValue(
-    "circle",
+    "dot",
   );
   await offline.locator('select[aria-label="Node shape"]').selectOption("card");
   await offline.locator('[data-action="physics"]').click();

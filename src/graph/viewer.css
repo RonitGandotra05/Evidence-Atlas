@@ -829,3 +829,117 @@
 .is-building .edit-connections {
   display: none;
 }
+
+/* One compact toolbar; the larger controls are a user-controlled disclosure. */
+.graph-options[hidden] {
+  display: none;
+}
+.graph-options {
+  max-height: min(440px, 45dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--g-border);
+  background: var(--g-card);
+}
+.graph-secondary-tools {
+  padding: 12px 18px;
+}
+.explore-settings,
+.path-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+}
+.explore-settings label,
+.path-controls label {
+  font-size: 12px;
+}
+.explore-settings select,
+.path-controls select {
+  max-width: 240px;
+  margin-left: 6px;
+}
+.graph-communities,
+.graph-path {
+  padding: 12px 18px;
+  border-top: 1px solid var(--g-border);
+}
+.graph-communities summary,
+.graph-path summary {
+  font-size: 13px;
+}
+.graph-communities summary span,
+.graph-path summary span {
+  margin-left: 10px;
+  font-size: 11px;
+  color: var(--g-muted);
+}
+.community-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 10px 20px;
+  padding-top: 14px;
+}
+.community-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.community-list span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.community-list i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.community-list small {
+  color: var(--g-muted);
+}
+.community-list input {
+  accent-color: #78dcbc;
+}
+.path-controls {
+  padding: 16px 0;
+}
+.path-result button {
+  display: block;
+  margin-top: 8px;
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.graph-viewer :focus-visible {
+  outline: 2px solid #78b8ed;
+  outline-offset: 3px;
+}
+.graph-hint {
+  max-width: calc(100% - 48px);
+}
+@media (max-width: 760px) {
+  .graph-tools {
+    gap: 6px;
+    padding: 10px;
+  }
+  .graph-search {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .graph-options {
+    max-height: 40dvh;
+  }
+  .explore-settings select,
+  .path-controls select {
+    max-width: 190px;
+  }
+  .graph-hint {
+    font-size: 9px;
+    bottom: 38px;
+  }
+}
