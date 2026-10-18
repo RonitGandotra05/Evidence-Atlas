@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile, access } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 const origin = "https://evidence-atlas.netlify.app";
+const shareImage = "/social-card-home-light-v2.png";
 const sitemap = await readFile("dist/sitemap.xml", "utf8");
 const robots = await readFile("dist/robots.txt", "utf8");
 assert.match(robots, /User-agent: \*/);
@@ -28,7 +29,18 @@ for (const path of ["/", "/guide/"]) {
     assert(html.includes(`href="${profile}"`), `${path}: visible profile link`);
   }
   assert.match(html, /name="robots" content="index, follow/);
-  assert.match(html, /property="og:image"/);
+  for (const attribute of ['property="og:image"', 'name="twitter:image"']) {
+    const tag = [...html.matchAll(/<meta\b[^>]*>/g)]
+      .map(([tag]) => tag)
+      .find((tag) => tag.includes(attribute));
+    assert.equal(
+      tag?.match(/content="([^"]+)"/)?.[1],
+      `${origin}${shareImage}`,
+      `${path}: current share image in ${attribute}`,
+    );
+  }
+  assert.match(html, /property="og:image:width" content="1200"/);
+  assert.match(html, /property="og:image:height" content="630"/);
   assert.match(html, /<h1[ >]/);
   assert.match(html, /<a[^>]+href="(?:\/)?#workspace"/);
   const blocks = [
@@ -61,7 +73,10 @@ const home = await readFile("dist/index.html", "utf8");
 assert.match(home, /Turn research papers into interactive knowledge graphs/);
 assert.match(home, /href="\/guide\/"/);
 assert.match(home, /id="home-start"/);
-await access("dist/social-card.png");
+const image = await readFile(`dist${shareImage}`);
+assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+assert.equal(image.readUInt32BE(16), 1200, "Share image width");
+assert.equal(image.readUInt32BE(20), 630, "Share image height");
 console.log(
   "SEO checks passed: readable HTML, canonical pages, metadata, structured data, robots, sitemap and share image.",
 );
